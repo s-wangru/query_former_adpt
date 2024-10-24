@@ -1,0 +1,3 @@
+table,join,predicate,cardinality
+lineitem  l,,"l.l_discount ,< ,0.05",909244
+"orders  o ,lineitem  l ,customer  c","(l.l_orderkey  =  o.o_orderkey) ,(o.o_custkey  =  c.c_custkey)","c.c_mktsegment ,= ,'BUILDING'",10047

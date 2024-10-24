@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/ruiqiwang/Desktop/QueryFormer/QueryFormer/tpch-kit/dbgen/tpch-kit/dbgen",
+      "program": "/Users/ruiqiwang/Desktop/QueryFormer/QueryFormer/tpch-kit/dbgen/tpch-kit/dbgen/build/Debug/outDebug"
+    }
+  ]
+}

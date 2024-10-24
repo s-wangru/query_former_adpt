@@ -1,0 +1,133 @@
+{
+"Plan": {
+"Node Type": "Aggregate",
+"Strategy": "Sorted",
+"Partial Mode": "Finalize",
+"Parallel Aware": false,
+"Async Capable": false,
+"Startup Cost": 231054.00,
+"Total Cost": 231055.95,
+"Plan Rows": 6,
+"Plan Width": 236,
+"Actual Startup Time": 1376.173,
+"Actual Total Time": 1377.171,
+"Actual Rows": 4,
+"Actual Loops": 1,
+"Group Key": ["l_returnflag", "l_linestatus"],
+"Plans": [
+{
+"Node Type": "Gather Merge",
+"Parent Relationship": "Outer",
+"Parallel Aware": false,
+"Async Capable": false,
+"Startup Cost": 231054.00,
+"Total Cost": 231055.40,
+"Plan Rows": 12,
+"Plan Width": 236,
+"Actual Startup Time": 1376.156,
+"Actual Total Time": 1377.125,
+"Actual Rows": 12,
+"Actual Loops": 1,
+"Workers Planned": 2,
+"Workers Launched": 2,
+"Plans": [
+{
+"Node Type": "Sort",
+"Parent Relationship": "Outer",
+"Parallel Aware": false,
+"Async Capable": false,
+"Startup Cost": 230053.97,
+"Total Cost": 230053.99,
+"Plan Rows": 6,
+"Plan Width": 236,
+"Actual Startup Time": 1367.866,
+"Actual Total Time": 1367.867,
+"Actual Rows": 4,
+"Actual Loops": 3,
+"Sort Key": ["l_returnflag", "l_linestatus"],
+"Sort Method": "quicksort",
+"Sort Space Used": 27,
+"Sort Space Type": "Memory",
+"Workers": [
+{
+"Worker Number": 0,
+"Sort Method": "quicksort",
+"Sort Space Used": 27,
+"Sort Space Type": "Memory"
+},
+{
+"Worker Number": 1,
+"Sort Method": "quicksort",
+"Sort Space Used": 27,
+"Sort Space Type": "Memory"
+}
+],
+"Plans": [
+{
+"Node Type": "Aggregate",
+"Strategy": "Hashed",
+"Partial Mode": "Partial",
+"Parent Relationship": "Outer",
+"Parallel Aware": false,
+"Async Capable": false,
+"Startup Cost": 230053.76,
+"Total Cost": 230053.89,
+"Plan Rows": 6,
+"Plan Width": 236,
+"Actual Startup Time": 1367.832,
+"Actual Total Time": 1367.836,
+"Actual Rows": 4,
+"Actual Loops": 3,
+"Group Key": ["l_returnflag", "l_linestatus"],
+"Planned Partitions": 0,
+"HashAgg Batches": 1,
+"Peak Memory Usage": 32,
+"Disk Usage": 0,
+"Workers": [
+{
+"Worker Number": 0,
+"HashAgg Batches": 1,
+"Peak Memory Usage": 32,
+"Disk Usage": 0
+},
+{
+"Worker Number": 1,
+"HashAgg Batches": 1,
+"Peak Memory Usage": 32,
+"Disk Usage": 0
+}
+],
+"Plans": [
+{
+"Node Type": "Seq Scan",
+"Parent Relationship": "Outer",
+"Parallel Aware": true,
+"Async Capable": false,
+"Relation Name": "lineitem",
+"Alias": "lineitem",
+"Startup Cost": 0.00,
+"Total Cost": 143760.59,
+"Plan Rows": 2465519,
+"Plan Width": 25,
+"Actual Startup Time": 0.379,
+"Actual Total Time": 256.596,
+"Actual Rows": 1971583,
+"Actual Loops": 3,
+"Filter": "(l_shipdate <= '1998-09-01 23:59:57'::timestamp without time zone)",
+"Rows Removed by Filter": 28822,
+"Workers": [
+]
+}
+]
+}
+]
+}
+]
+}
+]
+},
+"Planning Time": 0.617,
+"Triggers": [
+],
+"Execution Time": 1377.336
+}
