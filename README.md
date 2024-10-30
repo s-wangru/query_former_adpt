@@ -34,9 +34,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-encode_dataset.ipynb contains the streamline to encode a given dataset and SQL queries into EXPLAIN plans and the encoding dataset containing
-1. min and max of each column
-2. histogram file for the dataset
-3. bitmap of 1000 samples
-
-training_tpch.ipynb trains on the dataset tpc-h
+5. Train on custom dataset and queries
+```shell
+# python encode_dataset.py --sql_queries_filename --dataset_name --topredict
+python encode_dataset.py --tpch-kit/dbgen/tpch-stream.sql --tpch --cost 
+```
