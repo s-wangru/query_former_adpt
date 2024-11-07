@@ -26,7 +26,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler("transformer_dependency.log"),
+        logging.FileHandler("query_former.log"),
         logging.StreamHandler()
     ]
 )
