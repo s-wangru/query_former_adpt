@@ -144,15 +144,9 @@ COL2IDX = {}
 CURRENT_INDEX = 0
 
 
-# Lock for thread-safe operations
-lock = threading.Lock()
-
 
 def read_queries_from_file(file_path: str) -> List[str]:
-    """
-    Reads SQL queries from a file, ignoring comments and empty lines.
-    Each query should end with a semicolon.
-    """
+
     queries = []
     current_query = []
 
@@ -181,9 +175,7 @@ def read_queries_from_file(file_path: str) -> List[str]:
 
 
 def get_query_plan(query: str, db_config: Dict[str, str]) -> Optional[Dict[str, Any]]:
-    """
-    Executes the given SQL query with EXPLAIN ANALYZE and returns the execution plan.
-    """
+
     try:
         with psycopg2.connect(**db_config) as conn:
             with conn.cursor() as cur:
@@ -196,9 +188,7 @@ def get_query_plan(query: str, db_config: Dict[str, str]) -> Optional[Dict[str, 
 
 
 def save_query_plans(queries: List[str], db_config: Dict[str, str], output_csv: str):
-    """
-    Retrieves execution plans for all queries and saves them to a CSV file.
-    """
+
     query_plans = []
     for i, query in enumerate(queries):
         plan = get_query_plan(query, db_config)
@@ -651,90 +641,24 @@ def create_bitmaps(query_file: pd.DataFrame, alias_to_db: Dict[str, str], db_ali
         logging.error(f"An error occurred while creating bitmaps: {e}")
         sys.exit(1)
 
-from model.util import Normalizer
-from model.database_util import get_hist_file, get_job_table_sample, collator
-from model.model import QueryFormer
-from model.dataset import PlanTreeDataset
-from model.trainer import eval_workload, train
-import torch.nn as nn
-
-def train_on_query_plans(query_plans: pd.DataFrame, encoding: Encoding, histograms_csv: str, encoding_ckpt: str, topredict: str):
-    class Args:
-        # bs = 1024
-        # SQ: smaller batch size
-        bs = 128
-        lr = 0.001
-        # epochs = 200
-        epochs = 100
-        clip_size = 50
-        embed_size = 64
-        pred_hid = 128
-        ffn_dim = 128
-        head_size = 12
-        n_layers = 8
-        dropout = 0.1
-        sch_decay = 0.6
-        device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        newpath = './results/full/cost/'
-        to_predict = 'cost'
-    args = Args()
-
-    if not os.path.exists(args.newpath):
-        os.makedirs(args.newpath)
-
-    hist_file = get_hist_file(histograms_csv)
-    cost_norm = Normalizer(-3.61192, 12.290855)
-    card_norm = Normalizer(1,100)
-
-    encoder = torch.load(encoding_ckpt)
-    encoding = encoder['encoding']
-
-    model = QueryFormer(emb_size = args.embed_size ,ffn_dim = args.ffn_dim, head_size = args.head_size, \
-                 dropout = args.dropout, n_layers = args.n_layers, \
-                 use_sample = True, use_hist = True, \
-                 pred_hid = args.pred_hid
-                )
-    
-    _ = model.to(args.device)
-
-    dfs = []
-    df = pd.read_csv(query_plans_csv)
-    dfs.append(df)
-    full_train_df = pd.concat(dfs)
-    val_dfs = []
-    df = pd.read_csv(query_plans_csv)
-    val_dfs.append(df)
-
-    val_df = pd.concat(val_dfs)
-
-    table_sample = get_job_table_sample(DEFAULT_DB_NAME)
-    train_ds = PlanTreeDataset(full_train_df, None, encoding, hist_file, card_norm, cost_norm, topredict, table_sample)
-    val_ds = PlanTreeDataset(val_df, None, encoding, hist_file, card_norm, cost_norm, topredict, table_sample)
-    crit = nn.MSELoss()
-    model, best_path = train(model, train_ds, val_ds, crit, cost_norm, args)
-
-    return model, best_path
-
-
 def main():
     # Initialize Argument Parser
     parser = argparse.ArgumentParser(description="Process SQL queries and generate query plans, histograms, and bitmaps.")
     parser.add_argument('--file-name', type=str, default=DEFAULT_QUERY_FILE_PATH,
                         help=f"Path to the SQL queries file (default: {DEFAULT_QUERY_FILE_PATH})")
-    parser.add_argument('--dataset-name', type=str, default=DEFAULT_DB_NAME,
+    parser.add_argument('--dataset', type=str, default=DEFAULT_DB_NAME,
                         help=f"Name of the sample dataset/database (default: {DEFAULT_DB_NAME})")
-    parser.add_argument('--topredict', type=str, default='cost',help='cost or card')
 
     args = parser.parse_args()
 
     query_file_path = args.file_name
-    sample_db_name = args.dataset_name
-    to_predict = args.topredict
+    sample_db_name = args.dataset
+    datapath = sample_db_name + '_data'
 
     encoding_checkpoint = f'checkpoints/{sample_db_name}_encoding.pt'
-    histograms_csv = f'{sample_db_name}_histograms.csv'
-    query_plans_csv = f'{sample_db_name}_query_plans.csv'
-    bitmap_csv_file = f"{sample_db_name}.bitmaps"
+    histograms_csv = f'{datapath}/histograms.csv'
+    query_plans_csv = f'{datapath}/query_plans.csv'
+    bitmap_csv_file = f"{datapath}/{sample_db_name}.bitmaps"
 
     db_config = {
         "database": sample_db_name,
@@ -788,11 +712,6 @@ def main():
     query_file = parse_all_query_plans(full_train_df.to_dict('records'))
 
     create_bitmaps(query_file, ALIAS_TO_DB, DB_ALIAS, db_config, bitmap_csv_file)
-
-    model, best_path = train_on_query_plans(full_train_df, encoding, histograms_csv, encoding_checkpoint, to_predict)
-
-    logging.info(f"Best model saved at: {best_path}")
-
 
 if __name__ == "__main__":
     main()

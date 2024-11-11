@@ -34,8 +34,19 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-5. Train on custom dataset and queries
+5. Generate tpc-h worklaod
 ```shell
-# python encode_dataset.py --sql_queries_filename --dataset_name --topredict
-python encode_dataset.py --tpch-kit/dbgen/tpch-stream.sql --tpch --cost 
+cd tpch-kit/dbgen
+./dbgen.sh
 ```
+
+6. Generate encoding for queries
+```shell
+# python encode_dataset.py --file-name --dataset
+python encode_dataset.py --file-name tpch-kit/dbgen/tpch-stream.sql --dataset tpch 
+```
+
+7. Train on given quereis
+```shell
+# python train_query_former.py --file-name --dataset-name --topredict
+python train_query_former.py --file-name tpch_data
