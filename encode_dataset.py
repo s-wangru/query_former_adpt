@@ -194,7 +194,6 @@ def save_query_plans(queries: List[str], db_config: Dict[str, str], output_csv: 
         plan = get_query_plan(query, db_config)
         if plan:
             query_plans.append({"id": i, "json": json.dumps(plan)})
-            # Optionally, include the SQL query
             # query_plans.append({"id": i, "json": json.dumps(plan), "sql": query})
 
     full_train_df = pd.DataFrame(query_plans)
@@ -209,11 +208,11 @@ def load_and_validate_query_plans(input_csv: str) -> pd.DataFrame:
     """
     try:
         full_train_df = pd.read_csv(input_csv)
-        # Load and re-serialize JSON to ensure correct formatting
+
         for i, row in full_train_df.iterrows():
             try:
                 json_obj = json.loads(row['json'])
-                # Re-serialize the object for standard formatting
+
                 full_train_df.at[i, 'json'] = json.dumps(json_obj)
             except json.JSONDecodeError as e:
                 logging.error(f"Error decoding JSON for id {row['id']}: {e}")
@@ -239,7 +238,7 @@ def extract_minmax(table: str, column_min_max_vals: Dict[str, List[Any]], col2id
     """
     global COLUMN_MIN_MAX_VALS, COL2IDX, CURRENT_INDEX
 
-    full_path = os.path.join('tpch-kit/dbgen/outputs', f"{table}.tbl")
+    full_path = os.path.join('tpch-kit/dbgen/outputs', f"{table}.tbl") # @TODO: make path customizable
     try:
         df = pd.read_table(full_path, delimiter='|', header=None, index_col=False)
     except FileNotFoundError:
@@ -271,7 +270,6 @@ def extract_minmax(table: str, column_min_max_vals: Dict[str, List[Any]], col2id
             col2idx[full_column_name] = current_index
             current_index += 1
 
-    # Assign 'NA' to represent missing values
     if 'NA' not in col2idx:
         col2idx['NA'] = current_index
         current_index += 1
@@ -280,9 +278,7 @@ def extract_minmax(table: str, column_min_max_vals: Dict[str, List[Any]], col2id
 
 
 def process_schema_information() -> (Dict[str, List[Any]], Dict[str, int]):
-    """
-    Processes schema information to extract min/max values and column indices.
-    """
+
     column_min_max_vals = {}
     col2idx = {}
     current_index = 0
@@ -296,18 +292,12 @@ def process_schema_information() -> (Dict[str, List[Any]], Dict[str, int]):
 
 
 def save_encoding(encoding: Encoding, checkpoint_path: str):
-    """
-    Saves the Encoding object using PyTorch.
-    """
     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
     torch.save({'encoding': encoding}, checkpoint_path)
     logging.info(f"Encoding saved to '{checkpoint_path}'.")
 
 
 def load_encoding(checkpoint_path: str) -> Encoding:
-    """
-    Loads the Encoding object from a PyTorch checkpoint.
-    """
     try:
         encoding_ckpt = torch.load(checkpoint_path)
         encoding = encoding_ckpt['encoding']
@@ -624,14 +614,11 @@ def create_bitmaps(query_file: pd.DataFrame, alias_to_db: Dict[str, str], db_ali
 
                     table_samples.append(table_sample)
 
-        # Save bitmaps to a binary file
         with open(output_bitmap_file, 'wb') as f:
             for table_sample in table_samples:
-                # Write the number of tables for this query
                 num_tables = len(table_sample)
                 f.write(num_tables.to_bytes(4, byteorder='little'))
                 for table, bitmap in table_sample.items():
-                    # Pack the bitmap into bytes
                     num_bytes_per_bitmap = (len(bitmap) + 7) // 8
                     bitmap_bytes = np.packbits(bitmap[:num_bytes_per_bitmap * 8])
                     f.write(bitmap_bytes)
@@ -698,12 +685,6 @@ def main():
     save_encoding(encoding, encoding_checkpoint)
 
     encoding = load_encoding(encoding_checkpoint)
-
-    logging.info(f"Column to Index Mapping: {encoding.col2idx}")
-    logging.info(f"Index to Column Mapping: {encoding.idx2col}")
-    logging.info(f"Column Min-Max Values: {encoding.column_min_max_vals}")
-    logging.info(f"Index to Type Mapping: {encoding.idx2type}")
-    logging.info(f"Type to Index Mapping: {encoding.type2idx}")
 
     create_histograms(COLUMN_MAPPING, DB_ALIAS, db_config, histograms_csv)
 
