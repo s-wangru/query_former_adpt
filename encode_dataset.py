@@ -38,12 +38,13 @@ DEFAULT_HISTOGRAMS_CSV = 'histograms.csv'
 DEFAULT_BITMAP_CSV_FILE = "tpch.bitmaps"
 DEFAULT_ENCODING_CHECKPOINT = 'checkpoints/tpch_encoding.pt'
 DEFAULT_DB_NAME = 'tpch_sample'
-DEFAULT_DB_USER = 'ruiqiwang'
+DEFAULT_DB_USER = 'postgres'
 DEFAULT_DB_PASSWORD = 'admin'
 DEFAULT_DB_HOST = '127.0.0.1'
 DEFAULT_DB_PORT = '5432'
 DEFAULT_SAMPLE_SIZE = 1000
 query_plans_csv = 'tpch_query_plans.csv'
+datapath = "tpch10_data"
 
 # Database Aliases and Mappings
 DB_ALIAS = {
@@ -176,24 +177,30 @@ def read_queries_from_file(file_path: str) -> List[str]:
 
 def get_query_plan(query: str, db_config: Dict[str, str]) -> Optional[Dict[str, Any]]:
 
-    try:
-        with psycopg2.connect(**db_config) as conn:
-            with conn.cursor() as cur:
+    with psycopg2.connect(**db_config) as conn:
+        with conn.cursor() as cur:
+            try:
                 cur.execute(f"EXPLAIN (ANALYZE, FORMAT JSON) {query}")
                 plan = cur.fetchone()[0]  # fetchone() returns a tuple
                 return plan[0]
-    except Exception as e:
-        logging.error(f"Error getting plan for query: {query}\n{e}")
-        return None
+            except Exception as e:
+                try:
+                    cur.execute(query)
+                    logging.error(f"Not supported for explain: {query}")
+                    return None
+                except Exception as e:
+                    print(e)
 
 
 def save_query_plans(queries: List[str], db_config: Dict[str, str], output_csv: str):
 
     query_plans = []
-    for i, query in enumerate(queries):
+    i = 0
+    for query in queries:
         plan = get_query_plan(query, db_config)
         if plan:
             query_plans.append({"id": i, "json": json.dumps(plan)})
+            i += 1
             # query_plans.append({"id": i, "json": json.dumps(plan), "sql": query})
 
     full_train_df = pd.DataFrame(query_plans)
@@ -238,7 +245,7 @@ def extract_minmax(table: str, column_min_max_vals: Dict[str, List[Any]], col2id
     """
     global COLUMN_MIN_MAX_VALS, COL2IDX, CURRENT_INDEX
 
-    full_path = os.path.join('tpch-kit/dbgen/outputs', f"{table}.tbl") # @TODO: make path customizable
+    full_path = os.path.join('tpch-kit/dbgen/output', f"{table}.tbl") # @TODO: make path customizable
     try:
         df = pd.read_table(full_path, delimiter='|', header=None, index_col=False)
     except FileNotFoundError:
@@ -332,17 +339,15 @@ def create_histograms(column_mapping: Dict[str, Dict[int, str]], db_alias: Dict[
                             logging.warning(f"Warning: No data found for column '{col_name}' in table '{table}'.")
                             continue
 
-                        # Calculate percentiles for bins
                         hists = np.nanpercentile(col_array, range(0, 101, 2), axis=0)
                         freq = np.histogram(col_array, bins=hists)[0]
 
                         freq_hex = freq.astype('float').tobytes().hex()
 
-                        # Store results in the dataframe
                         res_dict = {
                             'table': table,
                             'column': col_name,
-                            'bins': ' '.join([str(int(i)) for i in hists]),
+                            'bins': repr((' ').join([str(int(i)) for i in hists])), 
                             'freq': freq_hex,
                             'table_column': f'{alias}.{col_name}'
                         }
@@ -390,35 +395,44 @@ def parse_predicate(predicate: str) -> List[str]:
     Parses a predicate string and returns a list of parsed conditions in the format "column,operator,value".
     """
     parsed_conditions = []
+    print(predicate)
+    predicate = predicate[1: (len(predicate)-1)]
 
     conditions = predicate.split(' AND ')
+    
     for condition in conditions:
         condition = condition.replace('(', '').replace(')', '').strip()
+        # front = 0
+        # while condition[front] == '(':
+        #     front += 1
+        # back = 0
+        # while condition[len(condition)-1-back] == ')':
+        #     back += 1
+        # rem = min(front, back)
+        # condition = condition[rem : len(condition)-rem]
+
         # Extract column, operator, value
         for operator in ['>=', '<=', '<>', '=', '>', '<', 'LIKE']:
-            if operator in condition:
-                parts = condition.split(operator)
-                if len(parts) == 2:
-                    column, value = parts
-                    column = column.strip()
-                    value = value.strip()
-                    # Prefix the column with alias if applicable
-                    if '.' in column:
-                        prefix, col = column.split('.', 1)
-                        prefixed_column = f"{prefix}.{col}"
-                    else:
+                if operator in condition:
+                    parts = condition.split(operator)
+                    if len(parts) == 2:
+                        column, value = parts
+                        column = column.strip()
+                        value = value.strip()
                         prefixed_column = column
-                    parsed_conditions.append(f"{prefixed_column},{operator},{value}")
-                break
+                        if '.' not in column and len(column.split('_')) > 1:
+                            prefix = column.split('_')[0]
+                            if prefix[0] == '(': 
+                                prefix = prefix[1:]
+                            prefixed_column = prefix + '.' + column
+                        parsed_conditions.append(f"{prefixed_column}&{operator}&{value}")
+                    break
 
     return parsed_conditions
 
 
 def parse_query_plan(query_plan: Dict[str, Any]) -> str:
-    """
-    Parses the query execution plan and extracts tables, joins, predicates, and cardinality.
-    Returns a formatted string.
-    """
+
     tables = set()
     joins = []
     predicates = []
@@ -456,12 +470,12 @@ def parse_query_plan(query_plan: Dict[str, Any]) -> str:
     traverse_plan(query_plan)
 
     # Format the result
-    table_str = ','.join(tables)
-    join_str = ','.join(joins)
-    predicate_str = ','.join(predicates)
-    card_str = str(cardinality) if cardinality else 'N/A'
+    table_str = '&'.join(tables)
+    join_str = '&'.join(joins)
+    predicate_str = '&'.join(predicates)
+    card_str = str(cardinality) if cardinality else '1'
 
-    return f"{table_str}#{join_str}#{predicate_str}#{card_str}"
+    return f"{table_str}@{join_str}@{predicate_str}@{card_str}"
 
 
 def parse_all_query_plans(query_plans: List[Dict[str, str]]) -> pd.DataFrame:
@@ -476,20 +490,21 @@ def parse_all_query_plans(query_plans: List[Dict[str, str]]) -> pd.DataFrame:
         parsed_results.append(parsed_result)
 
     df = pd.DataFrame(parsed_results, columns=["parsed_plan"])
-    df.to_csv('tpch.csv', index=False, sep='#', header=False, quoting=csv.QUOTE_NONE, escapechar=' ')
+    df.to_csv(datapath + '/tpch.csv', index=False, sep='@', header=False, quoting=csv.QUOTE_NONE, escapechar=' ')
     logging.info("Parsed query plans have been saved to 'tpch.csv'.")
     return df
 
 
 def create_sample_data(db_alias: Dict[str, str], column_mapping: Dict[str, Dict[int, str]], sample_size: int,
-                       db_config: Dict[str, str]):
+                       db_config: Dict[str, str], sampledb_config):
     """
     Creates sample data by sampling rows from each table and saves them to a new database.
     """
     try:
         # Connect to the original database to fetch data
-        with psycopg2.connect(db_config) as conn:
+        with psycopg2.connect(**db_config) as conn:
             with conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS tsm_system_rows")
                 sample_data = {}
                 tables = list(db_alias.keys())
 
@@ -508,15 +523,14 @@ def create_sample_data(db_alias: Dict[str, str], column_mapping: Dict[str, Dict[
                     sample_data[table] = ts
 
         # Connect to the sample database
-        engine = create_engine(f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}")
+        engine = create_engine(f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}" + "_sample")
 
         for table, df in sample_data.items():
             df['sid'] = list(range(sample_size))
             try:
-                # Add 'sid' column if it doesn't exist
-                with psycopg2.connect(db_config) as conn:
+                with psycopg2.connect(**sampledb_config) as conn:
                     with conn.cursor() as cur:
-                        cur.execute(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS sid INTEGER')
+                        cur.execute(f'ALTER TABLE {table} ADD COLUMN sid INTEGER')
                 # Append data to the sample database
                 df.to_sql(table, engine, if_exists='append', index=False)
                 logging.info(f"Sample data for table '{table}' inserted into sample database.")
@@ -527,106 +541,100 @@ def create_sample_data(db_alias: Dict[str, str], column_mapping: Dict[str, Dict[
         sys.exit(1)
 
 
-def create_bitmaps(query_file: pd.DataFrame, alias_to_db: Dict[str, str], db_alias: Dict[str, str],
+def create_bitmaps(alias_to_db: Dict[str, str], db_alias: Dict[str, str],
                   db_config: Dict[str, str], output_bitmap_file: str):
 
-    try:
-        with psycopg2.connect(**db_config) as conn:
-            with conn.cursor() as cur:
-                table_samples = []
-                for i, row in query_file.iterrows():
-                    table_sample = {}
-                    preds = row['predicate'].split(',')
-                    for j in range(0, len(preds), 3):
-                        if j + 2 >= len(preds):
+    with psycopg2.connect(**db_config) as conn:
+        with conn.cursor() as cur:
+            table_samples = []
+            query_file = pd.read_csv(datapath + '/tpch10.csv',sep='@',header=None)
+            query_file.columns = ['table','join','predicate','card']
+            for i, row in query_file.iterrows():
+                table_sample = {}
+                preds = row['predicate'].split('&')
+                special = False
+                for j in range(0, len(preds), 3):
+                    if j + 2 >= len(preds):
+                        continue
+                    left, op, right = preds[j:j + 3]
+                    left = left.strip().split('.')
+                    col = ''
+                    if len(left) < 2:
+                        col = left[0]
+                        db = row['table']
+                    elif len(left) > 2:
+                        continue
+                    else:
+                        alias, col = left
+                        if (alias not in alias_to_db):
                             continue
-                        left, op, right = preds[j:j + 3]
-                        left = left.strip()
-                        op = op.strip()
-                        right = right.strip()
-
-                        # Extract column and table
-                        if '.' in left:
-                            alias, col = left.split('.', 1)
-                            table = alias_to_db.get(alias, alias)
                         else:
-                            table = left
+                            db = alias_to_db[alias]
+                        
+                    pred_string = ''.join((col,op,right))
+                    print(pred_string)
+                    try:
+                        q = 'select sid from {} where {}'.format(db, pred_string)
+                        cur.execute(q)
+                    except Exception as e:
+                        continue
+                    sps = np.zeros(1000).astype('uint8')
+                    sids = cur.fetchall()
+                    sids = np.array(sids).squeeze()
+                    if sids.size>1:
+                        sps[sids] = 1
+                    if db in table_sample:
+                        table_sample[db] = table_sample[db] & sps
+                    else:
+                        table_sample[db] = sps
 
-                        # Construct predicate string
-                        pred_string = f"{col}{op}{right}"
-
-                        # Query to get 'sid's matching the predicate
-                        q = f"SELECT sid FROM {table} WHERE {pred_string}"
+                # Handle joins
+                if pd.notnull(row['join']) and len(row['join']) > 2:
+                    joins = row['join'].split('&')
+                    for join in joins:
+                        sp = join.split('=')
+                        if (len(sp) < 2):
+                            continue
+                        alias1,alias2 = sp[0].strip().split(' ')[0],sp[1].strip().split(' ')[0]
+                        alias1,alias2 = alias1.split('.')[0][1:],alias2.split('.')[0]
+                        print(alias1,alias2)
+                        if alias1 not in alias_to_db or alias2 not in alias_to_db:
+                            continue
+                        table1,table2 = alias_to_db[alias1],alias_to_db[alias2]
+                        q = 'select {}.sid from {} {} join {} {} on {}'.format(alias1, table1, alias1, table2, alias2,join)
                         cur.execute(q)
                         sids = cur.fetchall()
-                        sps = np.zeros(DEFAULT_SAMPLE_SIZE, dtype='uint8')
                         sids = np.array(sids).squeeze()
-                        if sids.size > 0:
+                        if sids.size>1:
                             sps[sids] = 1
-
-                        # Update bitmap for the table
-                        if table in table_sample:
-                            table_sample[table] &= sps
+                        if alias1 in table_sample:
+                            table_sample[alias1] = table_sample[alias1] & sps
                         else:
-                            table_sample[table] = sps
+                            table_sample[alias1] = sps
+                        # q = 'select {}.sid from {} {} join {} {} on {}'.format(alias2, table1, alias1, table2, alias2,join)
+                        # cur.execute(q)
+                        # sids = cur.fetchall()
+                        # sids = np.array(sids).squeeze()
+                        # if sids.size>1:
+                        #     sps[sids] = 1
+                        # if alias2 in table_sample:
+                        #     table_sample[alias2] = table_sample[alias2] & sps
+                        # else:
+                        #     table_sample[alias2] = sps
+                table_samples.append(table_sample)
 
-                    # Handle joins
-                    if pd.notnull(row['join']):
-                        joins = row['join'].split(',')
-                        for join in joins:
-                            # Assuming join condition format: alias1 = alias2
-                            if '=' not in join:
-                                continue
-                            left_join, right_join = join.split('=')
-                            left_alias = left_join.strip().split(' ')[0]
-                            right_alias = right_join.strip().split(' ')[0]
 
-                            left_table = alias_to_db.get(left_alias, left_alias)
-                            right_table = alias_to_db.get(right_alias, right_alias)
+    with open(output_bitmap_file, 'wb') as f:
+        for table_sample in table_samples:
+            print(table_sample.keys())
+            num_tables = len(table_sample)
+            f.write(num_tables.to_bytes(4, byteorder='little'))
+            for table, bitmap in table_sample.items():
+                num_bytes_per_bitmap = (len(bitmap) + 7) // 8
+                bitmap_bytes = np.packbits(bitmap[:num_bytes_per_bitmap * 8])
+                f.write(bitmap_bytes)
 
-                            # Query for left table join
-                            q_left = f"SELECT {left_table}.sid FROM {left_table} JOIN {right_table} ON {join}"
-                            cur.execute(q_left)
-                            sids_left = cur.fetchall()
-                            sids_left = np.array(sids_left).squeeze()
-                            sps_left = np.zeros(DEFAULT_SAMPLE_SIZE, dtype='uint8')
-                            if sids_left.size > 0:
-                                sps_left[sids_left] = 1
-
-                            if left_table in table_sample:
-                                table_sample[left_table] &= sps_left
-                            else:
-                                table_sample[left_table] = sps_left
-
-                            # Query for right table join
-                            q_right = f"SELECT {right_table}.sid FROM {left_table} JOIN {right_table} ON {join}"
-                            cur.execute(q_right)
-                            sids_right = cur.fetchall()
-                            sids_right = np.array(sids_right).squeeze()
-                            sps_right = np.zeros(DEFAULT_SAMPLE_SIZE, dtype='uint8')
-                            if sids_right.size > 0:
-                                sps_right[sids_right] = 1
-
-                            if right_table in table_sample:
-                                table_sample[right_table] &= sps_right
-                            else:
-                                table_sample[right_table] = sps_right
-
-                    table_samples.append(table_sample)
-
-        with open(output_bitmap_file, 'wb') as f:
-            for table_sample in table_samples:
-                num_tables = len(table_sample)
-                f.write(num_tables.to_bytes(4, byteorder='little'))
-                for table, bitmap in table_sample.items():
-                    num_bytes_per_bitmap = (len(bitmap) + 7) // 8
-                    bitmap_bytes = np.packbits(bitmap[:num_bytes_per_bitmap * 8])
-                    f.write(bitmap_bytes)
-
-        logging.info(f"Bitmap file saved as '{output_bitmap_file}'.")
-    except Exception as e:
-        logging.error(f"An error occurred while creating bitmaps: {e}")
-        sys.exit(1)
+    logging.info(f"Bitmap file saved as '{output_bitmap_file}'.")
 
 def main():
     # Initialize Argument Parser
@@ -649,6 +657,14 @@ def main():
 
     db_config = {
         "database": sample_db_name,
+        "user": DEFAULT_DB_USER,
+        "password": DEFAULT_DB_PASSWORD,
+        "host": DEFAULT_DB_HOST,
+        "port": DEFAULT_DB_PORT
+    }
+
+    sampledb_config = {
+        "database": sample_db_name + '_sample',
         "user": DEFAULT_DB_USER,
         "password": DEFAULT_DB_PASSWORD,
         "host": DEFAULT_DB_HOST,
@@ -686,13 +702,13 @@ def main():
 
     encoding = load_encoding(encoding_checkpoint)
 
-    create_histograms(COLUMN_MAPPING, DB_ALIAS, db_config, histograms_csv)
+    # create_histograms(COLUMN_MAPPING, DB_ALIAS, db_config, histograms_csv)
 
-    create_sample_data(DB_ALIAS, COLUMN_MAPPING, DEFAULT_SAMPLE_SIZE, db_config)
+    create_sample_data(DB_ALIAS, COLUMN_MAPPING, DEFAULT_SAMPLE_SIZE, db_config, sampledb_config)
 
     query_file = parse_all_query_plans(full_train_df.to_dict('records'))
 
-    create_bitmaps(query_file, ALIAS_TO_DB, DB_ALIAS, db_config, bitmap_csv_file)
+    create_bitmaps(ALIAS_TO_DB, DB_ALIAS, sampledb_config, bitmap_csv_file)
 
 if __name__ == "__main__":
     main()

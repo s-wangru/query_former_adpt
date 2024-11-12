@@ -48,7 +48,6 @@ class FeatureEmbed(nn.Module):
         self.tableEmbed = nn.Embedding(tables, embed_size)
         
         self.columnEmbed = nn.Embedding(columns, embed_size)
-        print(columns)
 
         self.opEmbed = nn.Embedding(ops, embed_size//8)
 
@@ -78,16 +77,34 @@ class FeatureEmbed(nn.Module):
         typeId, joinId, filtersId, filtersMask, hists, table_sample = torch.split(feature,(1,1,9,3,self.bin_number*3,1001), dim = -1)
         
         typeEmb = self.getType(typeId)
+
         joinEmb = self.getJoin(joinId)
+
+
         filterEmbed = self.getFilter(filtersId, filtersMask)
-        
+
+        if torch.isnan(filterEmbed).any() or torch.isinf(filterEmbed).any():
+            print("NaN or Inf detected in filterEmbed.")
+            print("filterEmbed:", filterEmbed)
+            return 
+
         histEmb = self.getHist(hists, filtersMask)
+
+        if torch.isnan(histEmb).any() or torch.isinf(histEmb).any():
+            print("NaN or Inf detected in histEmb.")
+            print("histEmb:", histEmb)
+            return 
+
         tableEmb = self.getTable(table_sample)
+        
+        
     
         if self.use_hist:
             final = torch.cat((typeEmb, filterEmbed, joinEmb, tableEmb, histEmb), dim = 1)
         else:
             final = torch.cat((typeEmb, filterEmbed, joinEmb, tableEmb), dim = 1)
+
+        
         final = F.leaky_relu(self.project(final))
         
         return final
@@ -120,7 +137,9 @@ class FeatureEmbed(nn.Module):
         ## avg by # of filters
         num_filters = torch.sum(filtersMask,dim = 1)
         total = torch.sum(emb, dim = 1)
-        avg = total / num_filters.view(-1,1)
+        # avg = total / num_filters.view(-1,1)
+        avg = torch.where(num_filters.view(-1, 1) == 0, torch.zeros_like(total), total / (num_filters.view(-1, 1) + 1e-8))
+
         
         return avg
         
@@ -146,7 +165,9 @@ class FeatureEmbed(nn.Module):
         ## avg by # of filters
         num_filters = torch.sum(filtersMask,dim = 1)
         total = torch.sum(concat, dim = 1)
-        avg = total / num_filters.view(-1,1)
+        # avg = total / num_filters.view(-1,1)
+        avg = torch.where(num_filters.view(-1, 1) == 0, torch.zeros_like(total), total / (num_filters.view(-1, 1) + 1e-8))
+
                 
         return avg
     
@@ -213,10 +234,13 @@ class QueryFormer(nn.Module):
         t = self.super_token_virtual_distance.weight.view(1, self.head_size, 1)
         tree_attn_bias[:, :, 1:, 0] = tree_attn_bias[:, :, 1:, 0] + t
         tree_attn_bias[:, :, 0, :] = tree_attn_bias[:, :, 0, :] + t
-        
-        
+
         x_view = x.view(-1, 1165)
         node_feature = self.embbed_layer(x_view).view(n_batch,-1, self.hidden_dim)
+        if torch.isnan(node_feature).any() or torch.isinf(node_feature).any():
+            print("NaN or Inf detected in node_feature.")
+            print("node_feature:", node_feature)
+            return 
         
         # -1 is number of dummy
         
@@ -226,10 +250,15 @@ class QueryFormer(nn.Module):
         
         # transfomrer encoder
         output = self.input_dropout(super_node_feature)
+
         for enc_layer in self.layers:
             output = enc_layer(output, tree_attn_bias)
+            if torch.isnan(output).any() or torch.isinf(output).any():
+                print("NaN or Inf detected in output.")
+                print("output:", output)
+                return  # Handle as appropriate (skip processing or return an error)
+
         output = self.final_ln(output)
-        
         return self.pred(output[:,0,:]), self.pred2(output[:,0,:])
 
 
@@ -268,7 +297,9 @@ class MultiHeadAttention(nn.Module):
         self.output_layer = nn.Linear(head_size * att_size, hidden_size)
 
     def forward(self, q, k, v, attn_bias=None):
+
         orig_q_size = q.size()
+
 
         d_k = self.att_size
         d_v = self.att_size
@@ -283,14 +314,20 @@ class MultiHeadAttention(nn.Module):
         v = v.transpose(1, 2)                  # [b, h, v_len, d_v]
         k = k.transpose(1, 2).transpose(2, 3)  # [b, h, d_k, k_len]
 
+
         # Scaled Dot-Product Attention.
         # Attention(Q, K, V) = softmax((QK^T)/sqrt(d_k))V
         q = q * self.scale
+
+
+
         x = torch.matmul(q, k)  # [b, h, q_len, k_len]
         if attn_bias is not None:
             x = x + attn_bias
 
-        x = torch.softmax(x, dim=3)
+
+        x = torch.softmax(x, dim=-1)
+
         x = self.att_dropout(x)
         x = x.matmul(v)  # [b, h, q_len, attn]
 

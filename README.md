@@ -43,10 +43,10 @@ cd tpch-kit/dbgen
 6. Generate encoding for queries
 ```shell
 # python encode_dataset.py --file-name --dataset
-python encode_dataset.py --file-name tpch-kit/dbgen/tpch-stream.sql --dataset tpch 
+python encode_dataset.py --file-name tpch-kit/dbgen/tpch-stream.sql --dataset tpch10
 ```
 
 7. Train on given quereis
 ```shell
 # python train_query_former.py --file-name --dataset-name --topredict
-python train_query_former.py --file-name tpch_data
+python train_query_former.py --file-name tpch10_data

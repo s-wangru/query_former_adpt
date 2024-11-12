@@ -17,7 +17,7 @@ from model.trainer import eval_workload, train
 data_path = ''
 histogram_file = 'histograms.csv'
 to_predict = 'cost'
-dataset = 'tpch'
+dataset = 'tpch10'
 train_file = 'query_plans.csv'
 
 test_file = 'query_plans.csv'
@@ -30,7 +30,7 @@ class Args:
     # epochs = 200
     epochs = 100
     clip_size = 50
-    embed_size = 64
+    embed_size = 32
     pred_hid = 128
     ffn_dim = 128
     head_size = 12

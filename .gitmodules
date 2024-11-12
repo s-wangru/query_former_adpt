@@ -1,0 +1,3 @@
+[submodule "tpch-kit"]
+	path = tpch-kit
+	url = https://github.com/lmwnshn/tpch-kit.git

@@ -28,10 +28,9 @@ def get_job_table_sample(workload_file_name, num_materialized_samples = 1000):
 
     # Load queries
     with open(workload_file_name + ".csv", 'r') as f:
-        data_raw = list(list(rec) for rec in csv.reader(f, delimiter='#'))
+        data_raw = list(list(rec) for rec in csv.reader(f, delimiter='@'))
         for row in data_raw:
             tables.append(row[0].split(','))
-
             if int(row[3]) < 1:
                 print("Queries must have non-zero cardinalities")
                 exit(1)
@@ -260,12 +259,15 @@ def formatJoin(json_node):
     
     ## sometimes no alias, say t.id 
     ## remove repeat (both way are the same)
-    if join is not None:
+    try:
+        if join is not None:
 
-        twoCol = join[1:-1].split(' = ')
-        twoCol = [json_node['Alias'] + '.' + col 
-                  if len(col.split('.')) == 1 else col for col in twoCol ] 
-        join = ' = '.join(sorted(twoCol))
+            twoCol = join[1:-1].split(' = ')
+            twoCol = [json_node['Alias'] + '.' + col 
+                    if len(col.split('.')) == 1 else col for col in twoCol ] 
+            join = ' = '.join(sorted(twoCol))
+    except Exception as e:
+        return None
     
     return join
     
@@ -299,7 +301,7 @@ class Encoding:
         self.column_min_max_vals = column_min_max_vals
         self.col2idx = col2idx
         self.op2idx = op2idx
-        
+
         idx2col = {}
         for k,v in col2idx.items():
             idx2col[v] = k
@@ -344,6 +346,8 @@ class Encoding:
             filt = ''.join(c for c in filt if c not in '()')
             fs = filt.split(' AND ')
             for f in fs:
+                if (f.split(' ') != 3):
+                    continue
                 col, op, num = f.split(' ')
                 column = alias + '.' + col
     #            print(f)

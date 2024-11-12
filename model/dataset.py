@@ -42,7 +42,7 @@ class PlanTreeDataset(Dataset):
         
     
         self.treeNodes = [] ## for mem collection
-        self.collated_dicts = [self.js_node2dict(i,node) for i,node in zip(idxs, nodes)]
+        self.collated_dicts = [self.js_node2dict(i,node) for i,node in enumerate(nodes)]
 
     def js_node2dict(self, idx, node):
         treeNode = self.traversePlan(node, idx, self.encoding)
@@ -205,11 +205,9 @@ def node2feature(node, encoding, hist_file, table_sample):
 
     # table, bitmap, 1 + 1000 bits
     table = np.array([node.table_id])
-    if node.table_id == 0:
+    if node.table_id == 0 or node.table not in table_sample[node.query_id].keys():
         sample = np.zeros(1000)
     else:
-        print(table_sample[node.query_id].keys())
-        print(node.table)
         sample = table_sample[node.query_id][node.table]
     
     #return np.concatenate((type_join,filts,mask))
