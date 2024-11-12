@@ -36,7 +36,8 @@ pip install -r requirements.txt
 
 5. Generate tpc-h worklaod
 ```shell
-cd tpch-kit/dbgen
+export DSS_CONFIG = path to dbgen
+export DSS_PATH = $DSS_CONFIG/output
 ./dbgen.sh
 ```
 
