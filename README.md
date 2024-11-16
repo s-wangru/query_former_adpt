@@ -40,7 +40,7 @@ export DSS_PATH = $DSS_CONFIG/output
 6. Generate encoding for queries
 ```shell
 # python encode_dataset.py --file-name --dataset
-python encode_dataset.py --file-name tpch-kit/dbgen/1 --dataset tpch10
+python encode_dataset.py --file-name tpch-kit/dbgen/data --dataset tpch10
 ```
 
 7. Train on given quereis

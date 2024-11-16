@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# transformer_dependency.py
 
 import os
 import sys
@@ -165,10 +163,11 @@ def read_queries_from_file(file_path: str) -> List[str]:
                         queries.append(' '.join(current_query))
                         current_query = []
         else:
-            for root, _, files in os.walk(file_path):
-                for filename in files:
-                    new_path = os.path.join(file_path, filename)
-                    
+            for seed in os.listdir(file_path):
+                seed_path = os.path.join(file_path, seed)
+                for filename in os.listdir(seed_path):
+                    new_path = os.path.join(seed_path, filename)
+
                     if not filename.endswith('.sql'):
                         continue
             
