@@ -37,7 +37,7 @@ DEFAULT_QUERY_PLANS_CSV = 'query_plans.csv'
 DEFAULT_HISTOGRAMS_CSV = 'histograms.csv'
 DEFAULT_BITMAP_CSV_FILE = "tpch.bitmaps"
 DEFAULT_ENCODING_CHECKPOINT = 'checkpoints/tpch_encoding.pt'
-DEFAULT_DB_NAME = 'tpch_sample'
+sample_db_name = 'tpch10'
 DEFAULT_DB_USER = 'postgres'
 DEFAULT_DB_PASSWORD = 'admin'
 DEFAULT_DB_HOST = '127.0.0.1'
@@ -149,26 +149,48 @@ CURRENT_INDEX = 0
 def read_queries_from_file(file_path: str) -> List[str]:
 
     queries = []
-    current_query = []
-
     try:
-        with open(file_path, 'r') as file:
-            for line in file:
-                line = line.strip()
+        if os.path.isfile(file_path):
+            current_query = []
+            with open(file_path, 'r') as file:
+                for line in file:
+                    line = line.strip()
 
-                if line.startswith('--') or not line:
-                    continue
+                    if line.startswith('--') or not line:
+                        continue
 
-                current_query.append(line)
+                    current_query.append(line)
+                    
+                    if line.endswith(';'):
+                        queries.append(' '.join(current_query))
+                        current_query = []
+        else:
+            for root, _, files in os.walk(file_path):
+                for filename in files:
+                    new_path = os.path.join(file_path, filename)
+                    
+                    if not filename.endswith('.sql'):
+                        continue
+            
+                    current_query = []
+                    with open(new_path, 'r') as file:
+                        for line in file:
+                            line = line.strip()
 
-                if line.endswith(';'):
-                    queries.append(' '.join(current_query))
-                    current_query = []  # Reset for the next query
+                            if line.startswith('--') or not line:
+                                continue
 
-        logging.info(f"Total Queries Read: {len(queries)}")
+                            current_query.append(line)
+                            
+                            if line.endswith(';'):
+                                queries.append(' '.join(current_query))
+                                current_query = [] 
+
+        logging.info(f"Total Queries Read from {file_path}: {len(queries)}")
         return queries
+    
     except FileNotFoundError:
-        logging.error(f"Error: File not found at {file_path}")
+        logging.error(f"Error: Folder not found at {file_path}")
         sys.exit(1)
     except Exception as e:
         logging.error(f"An error occurred while reading queries: {e}")
@@ -478,7 +500,7 @@ def parse_query_plan(query_plan: Dict[str, Any]) -> str:
     return f"{table_str}@{join_str}@{predicate_str}@{card_str}"
 
 
-def parse_all_query_plans(query_plans: List[Dict[str, str]]) -> pd.DataFrame:
+def parse_all_query_plans(query_plans: List[Dict[str, str]], test: str) -> pd.DataFrame:
     """
     Parses all query execution plans and returns a DataFrame.
     """
@@ -490,7 +512,7 @@ def parse_all_query_plans(query_plans: List[Dict[str, str]]) -> pd.DataFrame:
         parsed_results.append(parsed_result)
 
     df = pd.DataFrame(parsed_results, columns=["parsed_plan"])
-    df.to_csv(datapath + '/tpch.csv', index=False, sep='@', header=False, quoting=csv.QUOTE_NONE, escapechar=' ')
+    df.to_csv(f'{datapath}/{sample_db_name}_{test}.csv', index=False, sep='@', header=False, quoting=csv.QUOTE_NONE, escapechar=' ')
     logging.info("Parsed query plans have been saved to 'tpch.csv'.")
     return df
 
@@ -611,16 +633,6 @@ def create_bitmaps(alias_to_db: Dict[str, str], db_alias: Dict[str, str],
                             table_sample[alias1] = table_sample[alias1] & sps
                         else:
                             table_sample[alias1] = sps
-                        # q = 'select {}.sid from {} {} join {} {} on {}'.format(alias2, table1, alias1, table2, alias2,join)
-                        # cur.execute(q)
-                        # sids = cur.fetchall()
-                        # sids = np.array(sids).squeeze()
-                        # if sids.size>1:
-                        #     sps[sids] = 1
-                        # if alias2 in table_sample:
-                        #     table_sample[alias2] = table_sample[alias2] & sps
-                        # else:
-                        #     table_sample[alias2] = sps
                 table_samples.append(table_sample)
 
 
@@ -635,14 +647,13 @@ def create_bitmaps(alias_to_db: Dict[str, str], db_alias: Dict[str, str],
                 f.write(bitmap_bytes)
 
     logging.info(f"Bitmap file saved as '{output_bitmap_file}'.")
-
 def main():
     # Initialize Argument Parser
     parser = argparse.ArgumentParser(description="Process SQL queries and generate query plans, histograms, and bitmaps.")
     parser.add_argument('--file-name', type=str, default=DEFAULT_QUERY_FILE_PATH,
                         help=f"Path to the SQL queries file (default: {DEFAULT_QUERY_FILE_PATH})")
-    parser.add_argument('--dataset', type=str, default=DEFAULT_DB_NAME,
-                        help=f"Name of the sample dataset/database (default: {DEFAULT_DB_NAME})")
+    parser.add_argument('--dataset', type=str, default="tpch10",
+                        help=f"Name of the sample dataset/database (default: tpch10)")
 
     args = parser.parse_args()
 
@@ -652,8 +663,6 @@ def main():
 
     encoding_checkpoint = f'checkpoints/{sample_db_name}_encoding.pt'
     histograms_csv = f'{datapath}/histograms.csv'
-    query_plans_csv = f'{datapath}/query_plans.csv'
-    bitmap_csv_file = f"{datapath}/{sample_db_name}.bitmaps"
 
     db_config = {
         "database": sample_db_name,
@@ -673,11 +682,18 @@ def main():
 
     queries = read_queries_from_file(query_file_path)
 
+    train_size = int(0.8 * len(queries))
+    train_queries = queries[:train_size]
+    test_queries = queries[train_size:]
 
-    save_query_plans(queries, db_config, query_plans_csv)
+    train_query_plans_csv = f'{datapath}/train_query_plans.csv'
+    test_query_plans_csv = f'{datapath}/test_query_plans.csv'
 
+    save_query_plans(train_queries, db_config, train_query_plans_csv)
+    save_query_plans(test_queries, db_config, test_query_plans_csv)
 
-    full_train_df = load_and_validate_query_plans(query_plans_csv)
+    full_train_df = load_and_validate_query_plans(train_query_plans_csv)
+    full_test_df = load_and_validate_query_plans(test_query_plans_csv)
 
     column_min_max_vals, col2idx = process_schema_information()
 
@@ -687,28 +703,42 @@ def main():
         op2idx={'=': 0, '>': 1, '<': 2, '>=': 3, '<=': 4, 'NA': 5}
     )
 
+    def traverse_plan(plan):
+        encoding.encode_type(plan['Node Type'])
+        if 'Plans' in plan:
+            for subplan in plan['Plans']:
+                traverse_plan(subplan)
+
     for json_string in full_train_df['json']:
         query_plan = json.loads(json_string)['Plan']
-
-        def traverse_plan(plan):
-            encoding.encode_type(plan['Node Type'])
-            if 'Plans' in plan:
-                for subplan in plan['Plans']:
-                    traverse_plan(subplan)
-
+        traverse_plan(query_plan)
+    
+    for json_string in full_test_df['json']:
+        query_plan = json.loads(json_string)['Plan']
         traverse_plan(query_plan)
 
     save_encoding(encoding, encoding_checkpoint)
 
     encoding = load_encoding(encoding_checkpoint)
 
-    # create_histograms(COLUMN_MAPPING, DB_ALIAS, db_config, histograms_csv)
+    create_histograms(COLUMN_MAPPING, DB_ALIAS, db_config, histograms_csv)
 
     create_sample_data(DB_ALIAS, COLUMN_MAPPING, DEFAULT_SAMPLE_SIZE, db_config, sampledb_config)
 
-    query_file = parse_all_query_plans(full_train_df.to_dict('records'))
+    train_query_file = parse_all_query_plans(full_train_df.to_dict('records'), "train")
 
-    create_bitmaps(ALIAS_TO_DB, DB_ALIAS, sampledb_config, bitmap_csv_file)
+    test_query_file = parse_all_query_plans(full_test_df.to_dict('records'), "test")
+
+
+    train_bitmap_csv_file = f"{datapath}/{sample_db_name}_train.bitmaps"
+    test_bitmap_csv_file = f"{datapath}/{sample_db_name}_test.bitmaps"
+
+    create_bitmaps(ALIAS_TO_DB, DB_ALIAS, sampledb_config, train_bitmap_csv_file)
+    create_bitmaps(ALIAS_TO_DB, DB_ALIAS, sampledb_config, test_bitmap_csv_file)
+
+if __name__ == "__main__":
+    main()
+
 
 if __name__ == "__main__":
     main()

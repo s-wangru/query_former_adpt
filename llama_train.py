@@ -1,5 +1,8 @@
-#out of memory issues
-
+# some problems: 
+#   - out of memory issues
+#   - runs kinda slow
+#   - var length input, temporarily solved with padding
+#   - how to add the metadata more efficiently
 
 import json
 import torch
@@ -157,6 +160,9 @@ train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size,
 
 
 def data_collator(features):
+    """
+    Pads input_ids, attention_mask, and processes labels for batching.
+    """
     input_ids = [feature["input_ids"] for feature in features]
     attention_mask = [feature["attention_mask"] for feature in features]
     labels = [feature["labels"] for feature in features]
@@ -170,12 +176,7 @@ def data_collator(features):
         return_tensors="pt",
     )
 
-    max_length = batch["input_ids"].shape[1]
-    padded_labels = torch.full((len(labels), max_length), -100)
-    for i, label in enumerate(labels):
-        padded_labels[i, : len(label)] = torch.tensor(label, dtype=torch.long)
-
-    batch["labels"] = padded_labels
+    batch["labels"] = torch.tensor(labels, dtype=torch.float)
     return batch
 
 training_args = TrainingArguments(
@@ -203,8 +204,49 @@ trainer = Trainer(
     data_collator=data_collator,
 )
 
+try:
+    trainer.train()
+except RuntimeError as e:
+    if "out of memory" in str(e):
+        print("Caught PyTorch OOM error.")
+        torch.cuda.empty_cache()
+    else:
+        print(str(e))
 
-trainer.train()
+from torch.utils.data import DataLoader
+
+eval_loader = DataLoader(eval_dataset, batch_size=4, shuffle=False)
+model.eval()
+all_labels = []
+all_predictions = []
+
+with torch.no_grad():
+    for batch in eval_loader:
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+        labels = batch["labels"].to(device)  
+
+        # get predictions
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+        predictions = outputs.logits.squeeze(-1) 
+
+
+        all_predictions.extend(predictions.cpu().numpy())
+        all_actuals.extend(labels.cpu().numpy())
+
+# calculate qerror for each query
+q_errors = [
+    max(pred / actual, actual / pred)
+    for pred, actual in zip(all_predictions, all_actuals)
+    if actual > 0 and pred > 0 
+]
+
+mean_q_error = sum(q_errors) / len(q_errors)
+median_q_error = np.median(q_errors)
+
+print(f"Mean Q-Error: {mean_q_error}")
+print(f"Median Q-Error: {median_q_error}")
+
 
 model.save_pretrained("/mnt/nvme0n1/ruiqiwan/cost_model_llama")
 tokenizer.save_pretrained("/mnt/nvme0n1/ruiqiwan/cost_model_llama")
