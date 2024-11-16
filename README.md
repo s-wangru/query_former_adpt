@@ -47,5 +47,3 @@ python encode_dataset.py --file-name tpch-kit/dbgen/data --dataset tpch10
 ```shell
 # python train_query_former.py --file-name --dataset-name --topredict
 python train_query_former.py --file-name tpch10_data
-
-8. Train with 

@@ -61,6 +61,28 @@ def eval_workload(workload, methods):
     return eval_score, ds
 
 
+# def eval_workload(workload, methods):
+
+#     get_table_sample = methods['get_sample']
+#     workload_file_name = 'tpch10'
+#     output_file_name = '{}_output.csv'.format(workload)
+#     table_sample = get_table_sample(workload_file_name)
+
+#     plan_df = pd.read_csv('test_plans.csv')
+#     print_plan(plan_df['json'][0])
+#     workload_csv = pd.read_csv('tpch.csv',sep='@',header=None)
+#     workload_csv.columns = ['table','join','predicate','cardinality']
+#     workload_csv.to_csv(output_file_name, index=False)
+
+#     ds = PlanTreeDataset(plan_df, workload_csv, \
+#         methods['encoding'], methods['hist_file'], methods['cost_norm'], \
+#         methods['cost_norm'], 'cost', table_sample)
+    
+
+#     score = evaluate(methods['model'], ds, methods['bs'], methods['cost_norm'], methods['device'])
+#     return score, ds
+
+
 def evaluate(model, ds, bs, norm, device, prints=False):
     model.eval()
     cost_predss = np.empty(0)
