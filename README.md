@@ -29,7 +29,7 @@ source .venv/bin/activate
 ```shell
 pip install -r requirements.txt
 ```
-
+## Running query former on given dataset
 5. Generate tpc-h worklaod
 ```shell
 export DSS_CONFIG = path to dbgen
